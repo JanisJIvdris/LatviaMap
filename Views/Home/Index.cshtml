@@ -1,0 +1,193 @@
+﻿@model IEnumerable<LatviaMap.Models.Place>
+
+@{
+    ViewData["Title"] = "Latvia Map";
+}
+
+
+<style>
+
+    html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        font-family: Arial, sans-serif;
+        background-color: #f4f4f4;
+    }
+
+
+    header {
+        background-color: #333;
+        color: white;
+        padding: 10px 0;
+        text-align: center;
+        position: relative;
+        z-index: 10; 
+    }
+
+        header input {
+            padding: 10px;
+            width: 300px;
+            border: none;
+            border-radius: 5px;
+            margin-right: 10px;
+            box-shadow: none;
+            outline: none;
+            position: relative;
+        }
+
+        header button {
+            padding: 10px;
+            border: none;
+            background-color: #007BFF;
+            color: white;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+ 
+    #map {
+        position: absolute;
+        top: 50px; 
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: calc(100% - 50px); 
+        z-index: 1; 
+    }
+
+ 
+    #autocomplete-results {
+        position: absolute;
+        background-color: white;
+        border: 1px solid #ddd;
+        border-top: none;
+        width: 100%;
+        max-height: 200px;
+        overflow-y: auto;
+        z-index: 9999;
+        display: none;
+        color: black;
+        top: 100%;
+        left: 0;
+        box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+        border-radius: 0 0 5px 5px;
+    }
+
+        #autocomplete-results div {
+            padding: 10px;
+            cursor: pointer;
+            background-color: white;
+            color: black;
+        }
+
+            #autocomplete-results div:hover {
+                background-color: #f0f0f0;
+            }
+</style>
+
+<header>
+    <input type="text" id="search-bar" placeholder="Search for settlements or cities..." />
+    <button id="search-btn">Search</button>
+    <button id="show-extremes-btn">Show Extreme Points</button>
+    <div id="autocomplete-results"></div> 
+</header>
+
+<div id="map"></div>
+
+
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+
+<script>
+    var map;
+    var searchMarker = null;
+
+    // Initialize the map centered on Latvia
+    function initMap() {
+        map = L.map('map').setView([56.8796, 24.6032], 6); 
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+    }
+
+    // Load and display extreme places on the map
+    function loadExtremePoints() {
+        var places = @Html.Raw(JsonConvert.SerializeObject(Model));
+
+        // Add markers for the extreme places
+        places.forEach(function (place) {
+            var cleanName = place.Name.replace(/#/g, '');
+            var marker = L.marker([place.Latitude, place.Longitude]).addTo(map);
+            marker.bindPopup("<b>" + cleanName + "</b><br>Latitude: " + place.Latitude + "<br>Longitude: " + place.Longitude);
+        });
+    }
+
+    // Search for settlements or cities and show autocomplete
+    function searchPlace(query) {
+        fetch('/Home/Search?query=' + query)
+            .then(response => response.json())
+            .then(data => {
+                displayAutocomplete(data);
+            })
+            .catch(error => console.log(error));
+    }
+
+    // Display autocomplete results
+    function displayAutocomplete(results) {
+        var autocompleteContainer = document.getElementById('autocomplete-results');
+        autocompleteContainer.innerHTML = '';
+
+        if (results.length === 0) {
+            autocompleteContainer.style.display = 'none';
+            return;
+        }
+
+        results.forEach(function (place) {
+            var cleanName = place.name.replace(/#/g, '');
+            var resultDiv = document.createElement('div');
+            resultDiv.textContent = cleanName;
+            resultDiv.addEventListener('click', function () {
+                selectPlace(place);
+                autocompleteContainer.style.display = 'none';
+            });
+            autocompleteContainer.appendChild(resultDiv);
+        });
+
+        autocompleteContainer.style.display = 'block';
+    }
+
+    // Handle place selection and pin it on the map
+    function selectPlace(place) {
+        if (searchMarker) {
+            map.removeLayer(searchMarker);
+        }
+
+        var cleanName = place.name.replace(/#/g, '');
+        searchMarker = L.marker([place.latitude, place.longitude]).addTo(map);
+        map.setView([place.latitude, place.longitude], 10);  // Zoom in on the place
+        searchMarker.bindPopup("<b>" + cleanName + "</b><br>Latitude: " + place.latitude + "<br>Longitude: " + place.longitude).openPopup();
+    }
+
+    // Initialize the map when the page loads
+    document.addEventListener('DOMContentLoaded', function () {
+        initMap();
+
+        // Handle typing in the search bar
+        var searchBar = document.getElementById('search-bar');
+        searchBar.addEventListener('input', function () {
+            var query = searchBar.value;
+            if (query.length >= 2) {  // Start searching after 2 characters
+                searchPlace(query);
+            } else {
+                document.getElementById('autocomplete-results').style.display = 'none';
+            }
+        });
+
+        // Handle the "Show Extreme Points" button click
+        document.getElementById('show-extremes-btn').addEventListener('click', function () {
+            loadExtremePoints();
+        });
+    });
+</script>
