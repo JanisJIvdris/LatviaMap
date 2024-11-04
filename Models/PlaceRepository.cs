@@ -3,6 +3,7 @@ using CsvHelper;
 using CsvHelper.Configuration;
 using System.IO.Compression;
 using System.Net.Http;
+using System.Threading.Tasks;
 
 namespace LatviaMap.Models
 {
@@ -14,31 +15,49 @@ namespace LatviaMap.Models
 
         public PlaceRepository()
         {
-            EnsureCsvFile();
+            EnsureCsvFile().Wait(); // Ensure async method is called in constructor
         }
 
         // Ensures that the CSV file is downloaded and extracted
-        private void EnsureCsvFile()
+        private async Task EnsureCsvFile()
         {
             if (!File.Exists(_extractedCsvFile))
             {
-                DownloadAndExtractCsv();
+                await DownloadAndExtractCsv();
             }
         }
 
         // Downloads the ZIP file and extracts the CSV file
-        private void DownloadAndExtractCsv()
+        private async Task DownloadAndExtractCsv()
         {
-            using (var httpClient = new HttpClient())
+            try
             {
-                var zipFileBytes = httpClient.GetByteArrayAsync(_csvDownloadUrl).Result;
-                File.WriteAllBytes(_localZipFile, zipFileBytes);
-                ZipFile.ExtractToDirectory(_localZipFile, Path.GetDirectoryName(_localZipFile)!);
+                // Ensure the directory exists
+                string dataDirectory = Path.GetDirectoryName(_localZipFile)!;
+                if (!Directory.Exists(dataDirectory))
+                {
+                    Directory.CreateDirectory(dataDirectory);
+                }
 
+                // Download the ZIP file
+                using (var httpClient = new HttpClient())
+                {
+                    var zipFileBytes = await httpClient.GetByteArrayAsync(_csvDownloadUrl);
+                    await File.WriteAllBytesAsync(_localZipFile, zipFileBytes);
+                }
+
+                // Extract the ZIP file
+                ZipFile.ExtractToDirectory(_localZipFile, dataDirectory, true);
+
+                // Delete the ZIP file after extraction
                 if (File.Exists(_localZipFile))
                 {
                     File.Delete(_localZipFile);
                 }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"An error occurred during the download or extraction process: {ex.Message}");
             }
         }
 
@@ -47,11 +66,11 @@ namespace LatviaMap.Models
         {
             var csvConfig = new CsvConfiguration(CultureInfo.InvariantCulture)
             {
-                Delimiter = ";",  
-                HasHeaderRecord = true,  
-                BadDataFound = null,  
-                MissingFieldFound = null,  
-                PrepareHeaderForMatch = args => args.Header.Trim('#')  
+                Delimiter = ";",
+                HasHeaderRecord = true,
+                BadDataFound = null,
+                MissingFieldFound = null,
+                PrepareHeaderForMatch = args => args.Header.Trim('#')
             };
 
             using (var reader = new StreamReader(_extractedCsvFile))
